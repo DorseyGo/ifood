@@ -1,0 +1,24 @@
+server:
+  port: 9081
+
+spring:
+  output:
+    ansi:
+      enabled: always
+
+  datasource:
+    url: jdbc:mysql://${ifood.datasource.db-host}:${ifood.datasource.db-port}/${ifood.datasource.db-name}?useUnicode=truecharacterEncoding=UTF8&useSSL=false&serverTimezone=GMT%2B8
+    username: root
+    password: engine
+    type: com.zaxxer.hikari.HikariDataSource
+    hikari:
+      maximum-pool-size: 250
+      minimum-idle: 5
+      connection-test-query: SELECT 1
+
+#: self defined keys
+ifood:
+  datasource:
+    db-host: 127.0.0.1
+    db-port: 3306
+    db-name: ifood
