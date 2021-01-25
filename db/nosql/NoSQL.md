@@ -447,3 +447,118 @@ Using <font color="#a00">Redis</font> replication:
 - Send the `SLAVEOF NO ONE` command to the slaves in the new server
 - Restart your clients with the new updated configuration
 - Finally shutdown the no longer used instances in the old server
+
+### 1.9 Administration
+
+#### 1.9.1 redis-cli
+
+`redis-cli` is the <font color="#a00">Redis</font> command line interface, a simple program that allows to send commands to Redis, and reads the replies sent by the server, directly from the terminal.
+
+Two main modes:
+
+- interactive mode
+- another mode where the command is sent as arguments of `redis-cli`, *executed*, and *printed* on the standard output.
+
+##### 1.9.1.1 continuously run the same command
+
+This feature is controlled by two options: `-r <count>` and `-i <delay>`. The first states *how many times* to run a command, the second configures the *delay* between the different command calls, in seconds.
+
+``` shell
+redis-cli -r 5 incr foo
+```
+
+> **Tips**
+>
+> To run the same command forever, use `-1` as count.
+
+##### 1.9.1.2 Running Lua scripts
+
+`redis-cli` can be used to run script from a file in a way more comfortable way compared to typing the script interactively into the shell or as an argument:
+
+``` shell
+cat /tmp/script.lua // return redis.call('set', KEYS[1], ARGV[1])
+redis-cli --eval /tmp/script.lua foo , bar // OK
+```
+
+The <font color="#a00">Redis</font> `EVAL` command takes the list of keys the script uses, and the other non key arguments, as different arrays.
+
+The `--eval` option is useful when writing simple scripts.
+
+> **Notice**
+>
+> When a reconnection is performed, `redis-cli` automatically re-select the last database number selected. However the other state about the connection is lost, such as the state of a transaction if we were in middle of it.
+
+##### 1.9.1.3 continuous stats mode
+
+`--stat` is one of the lesser known features of `redis-cli`, and one very useful in order to monitor <font color="#a00">Redis</font> instances in real time.
+
+In this mode, a new line is printed every second with useful information and the differences between old data point. You can easily understand what's happening with *memory usage*, *clients connected*, and so forth.
+
+The `-i <interval>` option in this case works as a modifier in order to change the frequency at which new lines are emitted. The default is one *second*.
+
+``` shell
+redis-cli --stat -i 3
+```
+
+##### 1.9.1.4 Scanning for big keys
+
+In this special mode, `redis-cli` works as a *key space analyzer*. It scans the dataset for big keys, but also provides information about the data types that the data set consists of.
+
+``` shell
+redis-cli --bigkeys
+```
+
+The program uses the `SCAN` command, so it can be executed against a busy server without impacting the operations, however the `-i` option can be used in order to throttle the scanning process of the specified fraction of second for each 100 keys requested.
+
+##### 1.9.1.5 Getting a list of keys
+
+It is also possible to scan the key space, again in a way that does not block the <font color="#a00">Redis</font> server, and print all the key names, or filter them for specific patterns.
+
+``` shell
+redis-cli --scan | head -10
+```
+
+##### 1.9.1.6 Monitoring
+
+The monitoring mode is entered automatically once you use the `MONITOR` mode, it will print all the commands received by a <font color="#a00">Redis</font> instance.
+
+``` shell
+redis-cli monitor
+```
+
+<font color="#a00"><b>Redis</b></font> is often used in contexts where *latency* is very critical. *Latency* involved multiple moving parts within application, from the client library to the network stack, to the Redis instance itself.
+
+The basic *latency* checking tool is the `--latency` option.
+
+``` shell
+redis-cli --latency
+```
+
+The stats are provided in milliseconds. Usually, the average latency of a very fast instance tends to be overestimated a bit because of the latency due to the kernel scheduler of the system running `reds-cli` itself.
+
+Sometimes it is useful to study how the maximum and average latencies evolve during time. The `--latency-history` option is used for that purpose: it works exactly like `--latency`, but every *15* seconds (by default) a new sample session is started from scratch.
+
+``` shell
+redis-cli --latency-history
+```
+
+> **Notice**
+>
+> You can change the sampling sessions' length with the `-i <interval>` option
+
+##### 1.9.1.7 Remote backups of RDB files
+
+During <font color="#a00"><b>Redis</b></font> replication's first synchronization, the master and the slave exchange the whole data in form of an RDB file. This feature is exploited by `redis-cli` in order to provide a remote backup family, that allows to transfer an **RDB** file from any Redis instance to the local computer running `redis-cli`. 
+
+``` shell
+redis-cli --rdb /tmp/dump.rdb // may raise an error
+```
+
+##### 1.9.1.8 Slave mode
+
+The slave mode of the CLI is an advanced feature useful for <font color="#a00">Redis</font> developers and for debugging operations. it allows to inspect what a master sends to its slaves in the replication stream in order to propagate the writes to its replicas.
+
+``` shell
+redis-cli --slave
+```
+
