@@ -203,3 +203,247 @@ In order to acquire the lock, the client performs the following operations
 1. it gets the current time in milliseconds
 2. it tries to *acquire* the lock in *all the N instances sequentially*, using the same key name and random value in all instances. During step 2, when setting the lock in each instance, the client uses a timeout which is smaller compared to the total lock auto-release time in order to acquire it.
 3. The client computes *how much time elapsed* in order to acquire the lock, by substracting from the current time, the timestamp obtained in step 1. 
+
+### 1.5 Expire
+
+Set a *timeout* on `key`. After the timeout has expired, the key will automatically be *deleted*. A key with an associated timeout is often said to be *volatile* in <font color="#a0a">Redis</font> terminology.
+
+The *timeout* will only be cleared by commands that *delete* or *overwrite* the contents of key, including `DEL`, `SET`, `GETSET` and all the **STORE** commands. This means that all the operations that conceptually *alter* the value stored at the key without replacing it with a new one will leave the timeout *untouched*.
+
+If a key is overwritten by `RENAME`, like in case of an existing key `Key_A` that is overwritten by a call like `RENAME Key_B Key_A`, it does not matter if the original `Key_A` had a timeout associated or not, the new key `Key_A` will inherit all the characteristics of `Key_B`.
+
+#### 1.5.1 Refreshing expires
+
+It is possible to call `EXPIRE` using an argument a key that already has an existing expire set. In this case the *time to live* (**TTL**) is *updated* to the new value. 
+
+#### 1.5.2 Return value
+
+***Integer reply***, specifically:
+
+- `1` if the timeout was set
+- `0` if `key` does not exist
+
+Normally <font color="#a0a">Redis</font> keys are created *without* an associated TTL. The key will simply live forever, unless it is removed by the user in an explicit way, for instance using the `DEL` command.
+
+Keys expiring information is stored as absolute Unix timestamps. This means that the *time is flowing* even when <font color="#a0a">Redis</font> instance is **INACTIVE**.
+
+<font color="#a00">Redis</font> keys are expired in two ways: a *passive* way, and an *active* way.
+
+> **Tips**
+>
+> A key is *passively* expired simply when some client tries to access it, and the key is found to be timed out.
+>
+> Periodically <font color="#a0a">Redis</font> tests a few keys at random among keys with an expire set. All the keys that are already expired are deleted from the key space.
+>
+> Specifically this is what <font color="#a0a">Redis</font> does 10 times per second:
+>
+> 1. test 20 random keys from the set of keys with an associated expire
+> 2. Delete all keys found expired
+> 3. If more than **25%** of keys were expired, start again from step 1.
+
+> **Notice**
+>
+> In order to obtain a correct behavior without sacrificing consistency, when a key expires, a `DEL` operation is synthesized in both of AOF file and gains all the attached replicas nodes. This way the expiration process is centralized in the master instance, and there is no chance of consistency errors.
+
+### 1.6 Transactions
+
+`MULTI`, `EXEC`, `DISCARD` and `WATCH` are the foundation of transactions in <font color="#a0a">Redis</font>. They allow the execution of a group of commands in a single step, with two important guarantees:
+
+- All the commands in a *transaction* are *serialized* and *executed* sequentially. It can never happen that a request issued by another client is served **in the middle** of the execution of a <font color="#a0a">Redis</font> transaction.
+
+- Either all of the commands or none are processed, so a <font color="#a0a">Redis</font> transaction is also ***atomic***.
+
+  > **Notice**
+  >
+  > Using `append-only file (AOF)`
+  >
+  > If the <font color="#a0a">Redis</font> server crashes or is killed by the system administrator in some hard way it is possible that only a partial number of operations are registered.
+  >
+  > <font color="#a0a">Redis</font> will detect this condition at restart, and will exit with an error. Using the `redis-check-aof` tool it is possible to fix the append only file that will remove the partial transaction so that the server start again.
+
+#### 1.6.1 Usage
+
+A <font color="#a0a">Redis</font> transaction is entered using the `MULTI` command. The command *always* replies with an `OK`. At this point we can issue multiple commands. Instead of executing these commands, <font color="#a0a">Redis</font> will queue them. All commands are executed once `EXEC` is called.
+
+Calling `DISCARD` instead will flush the transaction queue and will *exit* the transaction.
+
+``` shell
+MULTI // reply with `ok`
+INCR foo // reply with `QUEUED`
+INCR bar // reply with `QUEUED`
+EXEC
+```
+
+It's important to note that **even when a command fails, all the other commands in the queue are processed** - <font color="#a0a">Redis</font> will *not* stop the processing of commands.
+
+> **Tips**
+>
+> <font color="#a0a">Redis</font> does **not** support rollback
+
+#### 1.6.2 Optimistic locking using check-and-set
+
+`WATCH` is used to provide a *check-and-set* (**CAS**) behavior to <font color="#a0a">Redis</font> transactions. `WATCH`ed keys are monitored in order to detect changes against them. If at least one watched key is *modified* before the `EXEC` command, the whole transaction aborts, and `EXEC` returns a `NULL reply` to notify that the transaction failed.
+
+``` shell
+WATCH my_key
+val = GET my_key
+val = val + 1
+MULTI
+SET my_key $val
+EXEC
+```
+
+### 1.7 Using Redis as an LRU cache
+
+When <font color="#a00"><b>Redis</b></font> is used as a cache, often it is handy to let it automatically *evict* old data as you add new data.
+
+<font color="#a0a"><b>LRU</b></font> is actually only one of the supported eviction methods. 
+
+> **Tips**
+>
+> Staring with <font color="#a00"><b>Redis</b></font> version 4.0, a new <font color="#a0a"><b>LFU</b></font> (Least Frequently Used) eviction policy is introduced
+
+#### 1.7.1 Max memory configuration directive
+
+The `maxmemory` configuration directive is used in order to configure <font color="#a00"><b>Redis</b></font> to use a specified amount of memory for the dataset. 
+
+> **Notice**
+>
+> Set the configuration directive using the `redis.conf` file, or later using the `CONFIG SET` command at runtime
+
+``` shell
+maxmemory 100mb
+```
+
+> **Tips**
+>
+> Setting `maxmemory` to `zero` results into no memory limits. This is the default behavior for 64 bit systems, while 32 bit systems use an implicit memory limit of 3GB
+
+#### 1.7.2 Eviction policies
+
+The exact behavior <font color="#a0a"><b>Redis</b></font> follows when the `maxmemory` limit is reached is configured using the `maxmemory-policy` configuration directive.
+
+Available:
+
+- **noeviction**: returns *errors* when the memory limit was reached and the client is trying to execute commands that could result in more memory to be used.
+- **allkeys-lru**: *evict* keys by trying to remove the less recently used (LRU) keys first, in order to make space for the new data added.
+- **volatile-lru**: *evict* keys by trying to remove the less recently used (LRU) keys first, but only among keys that have an **expire set**, in order to make space for the new data added
+- **allkeys-random**: *evict* keys randomly in order to make space for the new data added.
+- **volatile-random**: *evict* keys randomly in order to make space for the new data added, only *evict* keys with an **expire set**.
+- **volatile-ttl**: *evict* keys with an **expire set**, and try to *evict* keys with a shorter time to live (TTL) first, in order to make space for the new data added.
+
+In general as a rule of thumb:
+
+- Use the **allkeys-lru** policy when you expect a power-law distribution in the popularity of your requests, that is, you expect that a *subset* of elements will be accessed far more often than the rest. **A good pick if you are unsure**.
+- Use the **allkeys-random** if you have a cyclic access where all the keys are scanned continuously, or when you expect the distribution to be uniform
+- Use the **volatile-ttl** if you want to be able to provide hints to <font color="#a0a"><b>Redis</b></font> about what are good candidate for expiration by using different **TTL** values when you create your cache objects.
+
+#### 1.7.3 How the eviction process works
+
+It is important to understand that the eviction process works like:
+
+- a client runs a new command, resulting in more data added
+- <font color="#a0a">Redis</font> checks the memory usage, and if it is greater than the `maxmemory` limit, it evicts keys according to the policy.
+- A new command is executed, and so forth
+
+#### 1.7.4 LFU mode
+
+Think at <font color="#a0a"><b>LRU</b></font>, an item that was recently accessed but is actually almost never requested, will not get expired, so the risk is to *evict* a key that has a higher chance to be requested in the future.
+
+To configure the <font color="#a0a"><b>LFU</b></font> mode, the following policies are available:
+
+- `volatile-lfu`: *evict* using approximated **LFU** among the keys with an expire set.
+- `allkeys-lfu`: *evict* an key using approximated **LFU**
+
+By default <font color="#a0a"><b>Redis</b></font> 4.0 is configured to:
+
+- *Saturate* the counter at, around, one million requests
+- *Decay* the counter every one minute.
+
+``` shell
+lfu-log-factor 10
+lfu-decay-time 1
+```
+
+> **Tips**
+>
+> The *decay time* is the amount of minutes a counter should be decayed.
+>
+> The counter *logarithm factor* changes how many hits are needed in order to saturate the frequency counter, which is just the range *0-255*. The higher the factor, the more accesses are needed to reach the maximum. The lower the factor, the better is the resolution of the counter for low accesses.
+
+Basically the **factor** is a trade off between *better distinguishing items with low accesses* **VS** *distinguishing items with high accesses*.
+
+### 1.8 Partition
+
+<font color="#a00">Partitioning</font> is the process of *splitting* your data into multiple <font color="#a00">Redis</font> instances, so that every instances will only contain a *subset* of your keys.
+
+#### 1.8.1 Why 
+
+It serves *two* main goals:
+
+- it allows for much larger databases, using the *sum of the memory of many computers*.
+- allows *scaling* the computational power to multiple cores and multiple computers, and the network bandwidth to multiple computers and network adapters.
+
+#### 1.8.2 Basics
+
+Simplest way to perform partitioning is with **range partitioning**, and is accomplished by mapping ranges of objects into specific <font color="#a00">Redis</font> instances.
+
+> **Notice**
+>
+> disadvantages:
+>
+> *requires a table that map ranges to instances*
+
+Another way is **hash partitioning**:
+
+- Take the key name and us a *hash* function (e.g., `crc32`)
+- Use a *modulo* operation with this number in order to turn it into a number between 0 and `number of Redis instances`, so that this number can be mapped to one of my Redis instances.
+
+> **Tips**
+>
+> One advanced form of hash partitioning is called **consistent hashing**.
+
+#### 1.8.3 Different implementations
+
+Available implementations:
+
+- **Client side partitioning** means that the clients directly select the right node where to write or read a given key.
+
+- **Proxy assisted partitioning** means that our client send requests to a proxy that is able to speak the <font color="#a00">Redis</font> protocol, instead of sending requests directly to the right <font color="#a00">Redis</font> instance. The Redis and Memcached proxy `Twemproxy` implements proxy assisted partitioning.
+
+- **Query routing** means that you can send your query to a random instance, and the instance will make sure to forward your query to the right node.
+
+  > **Tips**
+  >
+  > The request is not directly forwarded from a Redis instance to another, but the client gets *redirected* to the right node.
+
+#### 1.8.4 Disadvantages
+
+Some don't play well with partitioning:
+
+- Operations involving multiple keys are usually not supported
+- Redis transactions involving multiple keys can not be used.
+- The partitioning granularity is the key, so it is not possible to shard a dataset with a single huge key like a very big sorted set.
+- When partitioning is used, data handling is more complex
+- Adding and removing capacity can be complex
+
+#### 1.8.5 Data store or cache
+
+Main concept here is the following:
+
+- If Redis is used as a cache **scaling up and down** using consistent hashing is easy
+- If Redis is used as a store, **a fixed keys-to-nodes map is used, so the number of nodes must be fixed and cannot vary**. Otherwise, a system is needed that is able to *rebalance* keys between nodes when nodes are needed or removed.
+
+#### 1.8.6 Presharding
+
+Since <font color="#a00">Redis</font> has an extremely small footprint and is lightweight (a small instance uses 1MB of memory), a simple approach to this problem is to start with a lot of instances from the start.
+
+Using <font color="#a00">Redis</font> replication:
+
+- Start empty instances in your new server.
+- Move data configuring these new instances as slaves for your source instances
+- Stop your clients
+- Update the configuration of the moved instances with the new server IP address
+- Send the `SLAVEOF NO ONE` command to the slaves in the new server
+- Restart your clients with the new updated configuration
+- Finally shutdown the no longer used instances in the old server
