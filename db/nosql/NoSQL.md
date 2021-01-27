@@ -562,3 +562,44 @@ The slave mode of the CLI is an advanced feature useful for <font color="#a00">R
 redis-cli --slave
 ```
 
+#### 1.9.2 Configuration
+
+<font color="#a00"><b>Redis</b></font> is able to start without a configuration file using a *built-in* default configuration, however this setup is only recommended for testing and development purpose.
+
+The proper way to configure <font color="#a00">Redis</font> is by providing a <font color="#a00">Redis</font> configuration file, usually called `redis.conf`.
+
+``` properties
+keyword arg1 arg2...
+```
+
+##### 1.9.2.1 Passing arguments via the command line
+
+Since <font color="#a00">Redis</font> 2.6 it is possible to also pass <font color="#a00">Redis</font> configuration parameters using the command line directly. This is very useful for *testing* purposes.
+
+``` shell
+./redis-server --port 6380 --slaveof 127.0.0.1 6379
+```
+
+> **Tips**
+>
+> The format of the arguments passed via the command line is exactly the same as the one used in the `redis.conf` file, with the exception that the *keyword* is *prefixed* with `--`.
+
+##### 1.9.2.2 Changing Redis configuration while the server is running
+
+It is possible to *reconfigure* <font color="#a00">Redis</font> on the fly without stopping and restarting the service, or querying the current configuration programmatically using the special commands `CONFIG SET` and `CONFIG GET`.
+
+> **Notice**
+>
+> **Not all** configuration directive are supported.
+>
+> *It has no effects on the `redis.conf` file* 
+
+##### 1.9.2.3 Configuring Redis as a cache
+
+If you plan to use <font color="#a00">Redis</font> just as a cache where every key will have an expire set, you may consider:
+
+``` properties
+maxmemory 2mb
+maxmemory-policy allkeys-lru
+```
+
