@@ -718,3 +718,15 @@ pg_dump -s -p 5432 $DATABASE_NAME > /path/to/sql
 > Note
 >
 > <font color="#aa0">$DATABASE_NAME</font> is the name of the database that you wanna dump all its tables' structure out.
+
+## X Appendix
+
+### X1 Failure: could not locate a valid checkpoint record
+
+> <b>Solution</b>:
+>
+> using command `docker run -it -v /root/postgres:/var/lib/postgresql/data postgres /bin/bash` to temporarily start a Postgres server, then using super account `postgres`, and execute the command `pg_resetwal -f /var/lib/postgresql/data` to reset the log.
+>
+> > <i>Notice</i>:
+> >
+> > `/root/postgres` is the data directory on the host machine

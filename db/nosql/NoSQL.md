@@ -603,3 +603,26 @@ maxmemory 2mb
 maxmemory-policy allkeys-lru
 ```
 
+#### 1.9.3 Replication
+
+At the base of <font color="#a00">Redis</font> replication (excluding the high availability features provided as an additional layer by <font color="#a00">Redis</font> cluster or <font color="#a00">Redis</font> Sentinel) there is a very simple to use and configure *leader follower* (master-slave) replication.
+
+> **Tips**
+>
+> Allows replica <font color="#a00">Redis</font> instances to be exact copies of master instances. The replica will automatically *reconnect* to master every time the link breaks, and will attempt to be an exact copy of it *regardless* of what happens to the master.
+
+This system works using *three main* mechanisms:
+
+1. When a master and a replica instances are *well-connected*, the master keeps the replica updated by sending a stream of commands to the replica, in order to replicate the effects on the dataset happening in the master side due to: *client writes, keys expired or evicted, and other action changing the master dataset*.
+
+2. When the *link* between the master and replica breaks, for network issues or because a timeout is sensed in master or the replica, the replica *reconnects* and *attempts* to proceed with the partial resynchronization: it means that it will try to just *obtain the part of the stream of commands it missed during the disconnection*.
+
+3. When a *partial resynchronization* is not possible, the replica will ask for a full resynchronization.
+
+   > **Tips**
+   >
+   > **Full resynchronization**, master needs to create a snapshot of *all* its data, send it to the replica, and then continue sending the stream of commands as the dataset changes.
+
+> **Notice**
+>
+> <font color="#a00"><b>Redis</b></font> uses by default *asynchronous replication*, which being *low latency* and *high performance*, is the natural replication mode for the vast majority of <font color="#a00">Redis</font> use cases. However, <font color="#a00">Redis</font> replicas asynchronously acknowledge the amount of data they received periodically with the master.
